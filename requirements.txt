@@ -18,11 +18,10 @@ sqlparse==0.5.1
 
 # Inference (OmniSQL-7B)
 # NOTE: transformers + torch are large downloads (~4GB)
-# Uncomment when ready to run real inference
-# torch==2.4.1
-# transformers==4.45.1
-# bitsandbytes==0.44.0
-# accelerate==0.34.2
+torch==2.4.1
+transformers==4.45.1
+bitsandbytes==0.42.0
+accelerate==0.34.2
 
 # Logging
 structlog==24.4.0
