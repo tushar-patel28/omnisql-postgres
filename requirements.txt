@@ -34,3 +34,5 @@ httpx==0.27.2
 # Dev utilities
 python-dotenv==1.0.1
 rich==13.8.1
+
+groq==0.13.0
