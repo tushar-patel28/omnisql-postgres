@@ -103,35 +103,6 @@ curl -X POST http://localhost:8000/api/v1/query \
 | POST | `/api/v1/query` | Natural language → SQL |
 | POST | `/api/v1/feedback` | Submit feedback on a result |
 | GET | `/api/v1/logs` | Query execution logs |
+```
 
-## Project Structure
-```
-text2sql/
-├── app/
-│   ├── main.py              # FastAPI app entry point
-│   ├── config.py            # Settings (pydantic-settings)
-│   ├── api/
-│   │   ├── routes.py        # All API routes
-│   │   └── schemas.py       # Pydantic request/response models
-│   ├── core/
-│   │   ├── database.py      # PostgreSQL connection + pgvector
-│   │   └── models.py        # SQLAlchemy ORM models
-│   └── services/
-│       ├── rag.py           # Schema RAG (pgvector similarity)
-│       ├── inference.py     # OmniSQL-7B inference (mock → real)
-│       ├── executor.py      # SQL execution + self-correction
-│       └── logger.py        # Query logging service
-├── tests/
-│   ├── test_rag.py
-│   ├── test_executor.py
-│   └── test_api.py
-├── scripts/
-│   ├── init_db.py           # DB init + pgvector extension
-│   └── register_schema.py   # Register sample schemas
-├── docker/
-│   └── Dockerfile           # App Dockerfile (for later)
-├── docker-compose.yml       # PostgreSQL + pgvector
-├── requirements.txt
-├── .env.example
-└── README.md
-```
+## Author : Tushar Vimalbhai Patel
