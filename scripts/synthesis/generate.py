@@ -11,7 +11,7 @@ Pipeline:
   2. Validate SQL syntax with sqlparse
   3. Reject SQLite-specific syntax
   4. Execute against real PostgreSQL to confirm correctness
-  5. Save validated pairs to JSONL for fine-tuning
+  5. Save validated pairs to JSONL after every batch (crash-safe)
 
 Usage:
     python scripts/synthesis/generate.py --total 2000 --output data/synthetic/pg_train.jsonl
@@ -26,6 +26,7 @@ import json
 import re
 import time
 import random
+import os
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
@@ -50,8 +51,6 @@ structlog.configure(
 )
 log = structlog.get_logger()
 settings = get_settings()
-
-# ── PostgreSQL complexity targets ─────────────────────────────────────────────
 
 COMPLEXITY_TARGETS = {
     "simple": {
@@ -87,8 +86,6 @@ COMPLEXITY_TARGETS = {
     },
 }
 
-# ── Prompt Template ───────────────────────────────────────────────────────────
-
 GENERATION_PROMPT = """You are an expert PostgreSQL database engineer creating training data for a Text-to-SQL model.
 
 Given this PostgreSQL database schema:
@@ -122,15 +119,11 @@ Output ONLY a JSON array, no other text before or after:
 ]"""
 
 
-# ── Groq Client ───────────────────────────────────────────────────────────────
-
 def init_groq(api_key: str) -> Groq:
-    """Initialize Groq client."""
     return Groq(api_key=api_key)
 
 
 def call_groq(client: Groq, prompt: str) -> str:
-    """Call Groq API with llama-3.3-70b-versatile."""
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
@@ -141,26 +134,20 @@ def call_groq(client: Groq, prompt: str) -> str:
 
 
 def parse_response(response_text: str) -> list[dict]:
-    """Parse LLM JSON response, handling markdown fences."""
     text = response_text.strip()
-
     if "```json" in text:
         text = re.sub(r"```json\s*", "", text)
         text = re.sub(r"```\s*$", "", text, flags=re.MULTILINE)
     elif "```" in text:
         text = re.sub(r"```\w*\s*", "", text)
         text = re.sub(r"```\s*$", "", text, flags=re.MULTILINE)
-
     text = text.strip()
     start = text.find("[")
     end = text.rfind("]") + 1
     if start == -1 or end == 0:
         raise ValueError("No JSON array found in response")
-
     return json.loads(text[start:end])
 
-
-# ── SQL Validation ────────────────────────────────────────────────────────────
 
 def is_valid_syntax(sql: str) -> bool:
     try:
@@ -171,7 +158,6 @@ def is_valid_syntax(sql: str) -> bool:
 
 
 def is_postgresql_sql(sql: str) -> bool:
-    """Reject SQLite-specific syntax."""
     sqlite_patterns = [
         r"strftime\s*\(",
         r"datetime\s*\(\s*['\"]now",
@@ -187,7 +173,6 @@ def is_postgresql_sql(sql: str) -> bool:
 
 
 async def execute_validate(sql: str, dsn: str) -> tuple[bool, str | None]:
-    """Execute SQL against PostgreSQL to confirm it works."""
     try:
         conn = await asyncpg.connect(dsn)
         try:
@@ -207,10 +192,14 @@ async def execute_validate(sql: str, dsn: str) -> tuple[bool, str | None]:
         return False, str(e)
 
 
-# ── Main Generation Loop ──────────────────────────────────────────────────────
+def save_pairs(output_path: str, all_pairs: list[dict]):
+    """Save all pairs to JSONL atomically."""
+    with open(output_path, "w") as f:
+        for pair in all_pairs:
+            f.write(json.dumps(pair) + "\n")
+
 
 async def setup_schema_tables(schema: dict, dsn: str):
-    """Create schema namespace and tables before generation."""
     conn = await asyncpg.connect(dsn)
     try:
         statements = [s.strip() for s in schema["ddl"].split(";") if s.strip()]
@@ -231,31 +220,54 @@ async def generate_for_schema(
     target_count: int,
     dsn: str,
     batch_size: int = 10,
+    output_path: str = None,
+    all_existing_pairs: list = None,
+    already_have: int = 0,
 ) -> list[dict]:
-    """Generate execution-validated pairs for a single schema."""
+    """
+    Generate execution-validated pairs for a single schema.
+
+    Saves after every batch — rate limit interruptions lose at most
+    one batch of 10 pairs, not an entire schema run.
+
+    already_have: pairs already saved for this schema on disk,
+                  so we only generate the remaining needed.
+    """
+    all_existing_pairs = all_existing_pairs or []
     validated_pairs = []
     attempts = 0
-    max_attempts = target_count * 3
+
+    effective_target = target_count - already_have
+    if effective_target <= 0:
+        log.info("Schema already complete, skipping", schema=schema["name"])
+        return []
+
+    max_attempts = effective_target * 4
 
     complexities = []
     for complexity, config in COMPLEXITY_TARGETS.items():
-        count = int(target_count * config["weight"])
+        count = int(effective_target * config["weight"])
         complexities.extend([complexity] * count)
-    while len(complexities) < target_count:
+    while len(complexities) < effective_target:
         complexities.append("moderate")
     random.shuffle(complexities)
 
     complexity_idx = 0
 
-    log.info("Generating pairs for schema", schema=schema["name"], target=target_count)
+    log.info(
+        "Generating pairs for schema",
+        schema=schema["name"],
+        target=effective_target,
+        already_have=already_have,
+    )
 
     sample_values_str = "\n".join(
         f"  - {col}: {values}"
         for col, values in schema.get("sample_values", {}).items()
     )
 
-    while len(validated_pairs) < target_count and attempts < max_attempts:
-        remaining = target_count - len(validated_pairs)
+    while len(validated_pairs) < effective_target and attempts < max_attempts:
+        remaining = effective_target - len(validated_pairs)
         current_batch = min(batch_size, remaining + 5)
         complexity = complexities[complexity_idx % len(complexities)]
         complexity_idx += 1
@@ -277,7 +289,7 @@ async def generate_for_schema(
             pairs = parse_response(raw)
 
             for pair in pairs:
-                if len(validated_pairs) >= target_count:
+                if len(validated_pairs) >= effective_target:
                     break
 
                 sql = pair.get("sql", "").strip()
@@ -286,11 +298,9 @@ async def generate_for_schema(
 
                 if not sql or not question:
                     continue
-
                 if not is_valid_syntax(sql):
                     log.debug("Syntax invalid, skipping", sql=sql[:60])
                     continue
-
                 if not is_postgresql_sql(sql):
                     log.debug("SQLite syntax detected, skipping", sql=sql[:60])
                     continue
@@ -308,16 +318,22 @@ async def generate_for_schema(
                     "sql": sql,
                     "dialect": "postgresql",
                     "complexity": complexity,
-                    "generated_at": datetime.utcnow().isoformat(),
+                    "generated_at": datetime.now().isoformat(),
                 })
 
             log.info(
                 "Batch complete",
                 schema=schema["name"],
                 validated=len(validated_pairs),
-                target=target_count,
+                target=effective_target,
                 attempts=attempts,
             )
+
+            # ── Save after every batch ────────────────────────────────────
+            # Key fix: saves mid-schema so rate limit interruptions
+            # don't lose progress. Tomorrow's resume tops up from here.
+            if output_path:
+                save_pairs(output_path, all_existing_pairs + validated_pairs)
 
             # Groq free tier: 30 RPM — stay safe at ~10 RPM
             time.sleep(6)
@@ -331,11 +347,11 @@ async def generate_for_schema(
         "Schema complete",
         schema=schema["name"],
         validated=len(validated_pairs),
-        target=target_count,
+        target=effective_target,
         success_rate=f"{len(validated_pairs)/max(attempts,1)*100:.1f}%",
     )
 
-    return validated_pairs[:target_count]
+    return validated_pairs
 
 
 async def run_synthesis(
@@ -344,7 +360,7 @@ async def run_synthesis(
     output_path: str,
     resume: bool = True,
 ):
-    """Main synthesis runner."""
+    """Main synthesis runner with crash-safe incremental saving."""
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -354,14 +370,25 @@ async def run_synthesis(
             existing_pairs = [json.loads(line) for line in f if line.strip()]
         log.info(f"Resuming: found {len(existing_pairs)} existing pairs")
 
-    from collections import Counter
     existing_schema_counts = Counter(p["schema_name"] for p in existing_pairs)
     pairs_per_schema_target = total_pairs // len(SCHEMAS)
-    existing_schemas = {
+
+    fully_done = {
         name for name, count in existing_schema_counts.items()
         if count >= pairs_per_schema_target
     }
-    log.info("Schema completion status", counts=dict(existing_schema_counts), skipping=existing_schemas)
+
+    partial = {
+        name: count for name, count in existing_schema_counts.items()
+        if 0 < count < pairs_per_schema_target
+    }
+
+    log.info(
+        "Schema status",
+        fully_done=fully_done,
+        partial=partial,
+        counts=dict(existing_schema_counts),
+    )
 
     client = init_groq(api_key)
     log.info("Groq initialized", model="llama-3.3-70b-versatile")
@@ -371,44 +398,37 @@ async def run_synthesis(
         f"@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}"
     )
 
-    schemas_to_run = [s for s in SCHEMAS if s["name"] not in existing_schemas]
+    schemas_to_run = [s for s in SCHEMAS if s["name"] not in fully_done]
     if not schemas_to_run:
         log.info("All schemas already generated!")
         return
-
-    remaining_pairs = total_pairs - len(existing_pairs)
-    pairs_per_schema = remaining_pairs // len(schemas_to_run)
-    extras = remaining_pairs % len(schemas_to_run)
 
     log.info(
         "Starting synthesis",
         total_target=total_pairs,
         existing=len(existing_pairs),
-        remaining=remaining_pairs,
-        schemas=len(schemas_to_run),
-        pairs_per_schema=pairs_per_schema,
+        schemas_to_run=[s["name"] for s in schemas_to_run],
     )
 
     all_pairs = existing_pairs.copy()
 
-    for i, schema in enumerate(schemas_to_run):
-        schema_target = pairs_per_schema + (1 if i < extras else 0)
+    for schema in schemas_to_run:
+        already_have = existing_schema_counts.get(schema["name"], 0)
 
         await setup_schema_tables(schema, dsn)
-        pairs = await generate_for_schema(
+        new_pairs = await generate_for_schema(
             client=client,
             schema=schema,
-            target_count=schema_target,
+            target_count=pairs_per_schema_target,
             dsn=dsn,
+            output_path=str(output_file),
+            all_existing_pairs=all_pairs.copy(),
+            already_have=already_have,
         )
 
-        all_pairs.extend(pairs)
-
-        with open(output_file, "w") as f:
-            for pair in all_pairs:
-                f.write(json.dumps(pair) + "\n")
-
-        log.info("Saved progress", total_saved=len(all_pairs), target=total_pairs)
+        all_pairs.extend(new_pairs)
+        save_pairs(str(output_file), all_pairs)
+        log.info("Schema saved", schema=schema["name"], total_saved=len(all_pairs))
 
     complexity_counts = Counter(p["complexity"] for p in all_pairs)
     schema_counts = Counter(p["schema_name"] for p in all_pairs)
@@ -422,8 +442,6 @@ async def run_synthesis(
     return all_pairs
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate PostgreSQL Text-to-SQL training data")
     parser.add_argument("--total", type=int, default=2000, help="Total pairs to generate")
@@ -434,7 +452,6 @@ if __name__ == "__main__":
 
     api_key = args.api_key
     if not api_key:
-        import os
         from dotenv import load_dotenv
         load_dotenv()
         api_key = os.getenv("GROQ_API_KEY")
