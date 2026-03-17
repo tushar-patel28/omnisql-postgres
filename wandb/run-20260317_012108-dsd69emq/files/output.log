@@ -1,0 +1,57 @@
+[2m2026-03-17T05:21:09.360301Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mcomplex[0m [36mprogress[0m=[35m1/10[0m [36mschema[0m=[35mhr_system[0m
+[2m2026-03-17T05:21:09.360501Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mCan you give me a list of all employees who have not been re[0m
+[2m2026-03-17T05:21:09.360685Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT *
+FROM users
+ORDER BY created_at DESC
+LIMIT 100;[0m
+[2m2026-03-17T05:21:09.436630Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mmoderate[0m [36mprogress[0m=[35m2/10[0m [36mschema[0m=[35mecommerce[0m
+[2m2026-03-17T05:21:09.436753Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mFind the users who have made an order with a total value gre[0m
+[2m2026-03-17T05:21:09.436816Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT COUNT(*) as total_count
+FROM users
+WHERE created_at >= DATE_TRUNC('month'[0m
+[2m2026-03-17T05:21:09.476001Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mmoderate[0m [36mprogress[0m=[35m3/10[0m [36mschema[0m=[35mfintech[0m
+[2m2026-03-17T05:21:09.476113Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mList all accounts that have been closed, along with the tota[0m
+[2m2026-03-17T05:21:09.476175Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT
+    DATE_TRUNC('day', created_at) as date,
+    COUNT(*) as count
+FROM or[0m
+[2m2026-03-17T05:21:09.511287Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mhighly_complex[0m [36mprogress[0m=[35m4/10[0m [36mschema[0m=[35mfintech[0m
+[2m2026-03-17T05:21:09.511394Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mWhat is the average balance for accounts with a loan that ha[0m
+[2m2026-03-17T05:21:09.511458Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT
+    DATE_TRUNC('day', created_at) as date,
+    COUNT(*) as count
+FROM or[0m
+[2m2026-03-17T05:21:09.547054Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mmoderate[0m [36mprogress[0m=[35m5/10[0m [36mschema[0m=[35mhr_system[0m
+[2m2026-03-17T05:21:09.547161Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mCan you give me a list of all departments and their correspo[0m
+[2m2026-03-17T05:21:09.547219Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT *
+FROM users
+ORDER BY created_at DESC
+LIMIT 100;[0m
+[2m2026-03-17T05:21:09.580067Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mcomplex[0m [36mprogress[0m=[35m6/10[0m [36mschema[0m=[35mhealthcare[0m
+[2m2026-03-17T05:21:09.580189Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mWhat are the most common appointment types for patients with[0m
+[2m2026-03-17T05:21:09.580244Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT COUNT(*) as total_count
+FROM users
+WHERE created_at >= DATE_TRUNC('month'[0m
+[2m2026-03-17T05:21:09.615556Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mhighly_complex[0m [36mprogress[0m=[35m7/10[0m [36mschema[0m=[35mecommerce[0m
+[2m2026-03-17T05:21:09.615667Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mFind the average order value for each tier of users, conside[0m
+[2m2026-03-17T05:21:09.615732Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT COUNT(*) as total_count
+FROM users
+WHERE created_at >= DATE_TRUNC('month'[0m
+[2m2026-03-17T05:21:09.647765Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mmoderate[0m [36mprogress[0m=[35m8/10[0m [36mschema[0m=[35mecommerce[0m
+[2m2026-03-17T05:21:09.647875Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mShow me the top 5 products by total quantity sold, excluding[0m
+[2m2026-03-17T05:21:09.647928Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT *
+FROM users
+ORDER BY created_at DESC
+LIMIT 100;[0m
+[2m2026-03-17T05:21:09.681164Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mhighly_complex[0m [36mprogress[0m=[35m9/10[0m [36mschema[0m=[35msaas_analytics[0m
+[2m2026-03-17T05:21:09.681266Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mWhat is the average number of days between the creation date[0m
+[2m2026-03-17T05:21:09.681320Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT COUNT(*) as total_count
+FROM users
+WHERE created_at >= DATE_TRUNC('month'[0m
+[2m2026-03-17T05:21:09.714761Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mmoderate[0m [36mprogress[0m=[35m10/10[0m [36mschema[0m=[35mecommerce[0m
+[2m2026-03-17T05:21:09.714859Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mmock[0m [36mquestion[0m=[35mList the number of orders placed by each user, including the[0m
+[2m2026-03-17T05:21:09.714914Z[0m [[32m[1minfo     [0m] [1mInference complete            [0m [36msql_preview[0m=[35mSELECT
+    DATE_TRUNC('day', created_at) as date,
+    COUNT(*) as count
+FROM or[0m
+[2m2026-03-17T05:21:09.748667Z[0m [[32m[1minfo     [0m] [1mProgress                      [0m [36mevaluated[0m=[35m10[0m [36mex_accuracy[0m=[35m0.0%[0m [36mvalidity[0m=[35m100.0%[0m

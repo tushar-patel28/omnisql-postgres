@@ -1,0 +1,113 @@
+[2m2026-03-17T05:12:37.408011Z[0m [[32m[1minfo     [0m] [1mEvaluating                    [0m [36mcomplexity[0m=[35mcomplex[0m [36mprogress[0m=[35m1/10[0m [36mschema[0m=[35mhr_system[0m
+[2m2026-03-17T05:12:37.408172Z[0m [[32m[1minfo     [0m] [1mRunning inference             [0m [36mmode[0m=[35mlocal[0m [36mquestion[0m=[35mCan you give me a list of all employees who have not been re[0m
+[2m2026-03-17T05:12:37.408237Z[0m [[32m[1minfo     [0m] [1mLoading OmniSQL-7B locally    [0m [36mmodel_path[0m=[35mseeklhy/OmniSQL-7B[0m
+Some parameters are on the meta device because they were offloaded to the disk.
+[2m2026-03-17T05:12:44.524190Z[0m [[32m[1minfo     [0m] [1mOmniSQL-7B loaded successfully[0m
+/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/generation/configuration_utils.py:601: UserWarning: `do_sample` is set to `False`. However, `temperature` is set to `0.0` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `temperature`.
+  warnings.warn(
+/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/generation/configuration_utils.py:606: UserWarning: `do_sample` is set to `False`. However, `top_p` is set to `0.8` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `top_p`.
+  warnings.warn(
+/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/generation/configuration_utils.py:623: UserWarning: `do_sample` is set to `False`. However, `top_k` is set to `20` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `top_k`.
+  warnings.warn(
+Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)
+Traceback (most recent call last):
+  File "/Users/tushar/Documents/text2sql/scripts/evaluation/evaluate.py", line 277, in <module>
+    asyncio.run(run_evaluation(
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "/Users/tushar/Documents/text2sql/scripts/evaluation/evaluate.py", line 157, in run_evaluation
+    generated_sql, explanation = await run_inference(pair["question"], prompt)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/app/services/inference.py", line 212, in run_inference
+    raw_response = local_inference(prompt)
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/app/services/inference.py", line 160, in local_inference
+    output_ids = model.generate(
+                 ^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/generation/utils.py", line 2048, in generate
+    result = self._sample(
+             ^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/generation/utils.py", line 3008, in _sample
+    outputs = self(**model_inputs, return_dict=True)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/accelerate/hooks.py", line 170, in new_forward
+    output = module._old_forward(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py", line 1167, in forward
+    outputs = self.model(
+              ^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py", line 976, in forward
+    layer_outputs = decoder_layer(
+                    ^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/accelerate/hooks.py", line 170, in new_forward
+    output = module._old_forward(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py", line 717, in forward
+    hidden_states = self.mlp(hidden_states)
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/accelerate/hooks.py", line 170, in new_forward
+    output = module._old_forward(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/transformers/models/qwen2/modeling_qwen2.py", line 276, in forward
+    return self.down_proj(self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/accelerate/hooks.py", line 165, in new_forward
+    args, kwargs = module._hf_hook.pre_forward(module, *args, **kwargs)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/accelerate/hooks.py", line 336, in pre_forward
+    value = self.weights_map[name]
+            ~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/accelerate/utils/offload.py", line 118, in __getitem__
+    return self.dataset[f"{self.prefix}{key}"]
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tushar/Documents/text2sql/omniSQL/lib/python3.12/site-packages/accelerate/utils/offload.py", line 171, in __getitem__
+    tensor = f.get_tensor(weight_info.get("weight_name", key))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 157, in _on_sigint
+    raise KeyboardInterrupt()
+KeyboardInterrupt

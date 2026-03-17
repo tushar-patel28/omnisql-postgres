@@ -1,0 +1,13 @@
+{"time":"2026-03-17T01:12:36.759794-04:00","level":"INFO","msg":"using version","core version":"0.18.3"}
+{"time":"2026-03-17T01:12:36.759837-04:00","level":"INFO","msg":"created symlink","path":"/Users/tushar/Documents/text2sql/wandb/run-20260317_011236-dznbk98g/logs/debug-core.log"}
+{"time":"2026-03-17T01:12:36.784138-04:00","level":"ERROR","msg":"dialing: google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information"}
+{"time":"2026-03-17T01:12:36.791539-04:00","level":"INFO","msg":"created new stream","id":"dznbk98g"}
+{"time":"2026-03-17T01:12:36.791565-04:00","level":"INFO","msg":"stream: started","id":"dznbk98g"}
+{"time":"2026-03-17T01:12:36.791574-04:00","level":"INFO","msg":"sender: started","stream_id":{"value":"dznbk98g"}}
+{"time":"2026-03-17T01:12:36.79157-04:00","level":"INFO","msg":"writer: Do: started","stream_id":{"value":"dznbk98g"}}
+{"time":"2026-03-17T01:12:36.79158-04:00","level":"INFO","msg":"handler: started","stream_id":{"value":"dznbk98g"}}
+{"time":"2026-03-17T01:12:37.351899-04:00","level":"INFO","msg":"wandb-core","!BADKEY":null}
+{"time":"2026-03-17T01:12:37.352745-04:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2026-03-17T01:18:14.894239-04:00","level":"INFO","msg":"stream: closing","id":"dznbk98g"}
+{"time":"2026-03-17T01:18:14.89457-04:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2026-03-17T01:18:14.894706-04:00","level":"INFO","msg":"Stopped system monitor"}
