@@ -4,9 +4,6 @@ __pycache__/
 .env
 *.egg-info/
 .DS_Store
-
-# Data files (large, don't commit to git)
 data/synthetic/*.jsonl
-
-# Model cache
 .cache/
+wandb/
