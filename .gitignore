@@ -7,3 +7,9 @@ __pycache__/
 data/synthetic/*.jsonl
 .cache/
 wandb/
+
+infrastructure/.terraform/
+infrastructure/terraform.tfstate
+infrastructure/terraform.tfstate.backup
+infrastructure/terraform.tfvars
+infrastructure/.terraform.lock.hcl
