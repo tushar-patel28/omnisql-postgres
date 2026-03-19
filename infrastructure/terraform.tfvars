@@ -1,0 +1,6 @@
+aws_region  = "us-east-1"
+project     = "omnisql"
+environment = "dev"
+vpc_cidr    = "10.0.0.0/16"
+db_password = "OmniSQL2026!"
+app_image = "540659119855.dkr.ecr.us-east-1.amazonaws.com/omnisql-dev-api:latest"
