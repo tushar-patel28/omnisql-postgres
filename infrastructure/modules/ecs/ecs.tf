@@ -18,6 +18,7 @@ variable "app_image" { type = string }
 resource "aws_ecr_repository" "app" {
   name                 = "${var.project}-${var.environment}-api"
   image_tag_mutability = "MUTABLE"
+  force_delete = true
   image_scanning_configuration { scan_on_push = true }
   tags = { Name = "${var.project}-${var.environment}-api" }
 }

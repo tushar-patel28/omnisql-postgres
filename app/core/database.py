@@ -4,12 +4,18 @@ from app.config import get_settings
 
 settings = get_settings()
 
+# SSL required for RDS — not needed for local Docker
+connect_args = {}
+if settings.postgres_host != "localhost":
+    connect_args = {"ssl": "require"}
+
 engine = create_async_engine(
     settings.database_url,
     echo=settings.app_env == "development",
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
+    connect_args=connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -41,9 +47,7 @@ async def init_db():
     from app.core.models import SchemaRegistry, QueryLog  # noqa: F401
 
     async with engine.begin() as conn:
-        # Enable pgvector extension
         await conn.execute(
             __import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector")
         )
-        # Create all tables
         await conn.run_sync(Base.metadata.create_all)

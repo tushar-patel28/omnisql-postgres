@@ -24,17 +24,20 @@ class Settings(BaseSettings):
 
     # RAG
     embedding_model: str = "all-MiniLM-L6-v2"
-    rag_top_k: int = 5  # number of relevant tables to retrieve
+    rag_top_k: int = 5
 
     # Self-correction
     max_correction_attempts: int = 2
 
     @property
     def database_url(self) -> str:
-        return (
+        base = (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+        if self.postgres_host != "localhost":
+            base += "?ssl=require"
+        return base
 
     @property
     def database_url_sync(self) -> str:
@@ -47,7 +50,8 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "extra": "ignore",
         "protected_namespaces": ("settings_",),
-}
+    }
+
 
 @lru_cache()
 def get_settings() -> Settings:
