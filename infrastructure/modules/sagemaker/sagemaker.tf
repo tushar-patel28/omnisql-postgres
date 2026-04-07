@@ -33,7 +33,9 @@ resource "aws_iam_role_policy" "sagemaker_s3" {
       Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
       Resource = [
         "arn:aws:s3:::${var.s3_bucket_name}",
-        "arn:aws:s3:::${var.s3_bucket_name}/*"
+        "arn:aws:s3:::${var.s3_bucket_name}/*",
+        "arn:aws:s3:::${var.project}-${var.environment}-datasets-${var.account_id}",
+        "arn:aws:s3:::${var.project}-${var.environment}-datasets-${var.account_id}/*"
       ]
     }]
   })
