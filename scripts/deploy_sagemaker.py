@@ -1,108 +1,69 @@
 import boto3
-import json
 import tarfile
 import os
-import sagemaker
+import subprocess
 from datetime import datetime
 
 region = "us-east-1"
-account_id = "540659119855"
 role_arn = "arn:aws:iam::540659119855:role/omnisql-dev-sagemaker-role"
 model_bucket = "omnisql-dev-models-540659119855"
 endpoint_name = "omnisql-pg-endpoint"
 
 client = boto3.client("sagemaker", region_name=region)
+s3 = boto3.client("s3", region_name=region)
 
-# ── Create inference script package ───────────────────────────────────────────
+# ── Write inference.py ────────────────────────────────────────────────────────
 os.makedirs("scripts/inference", exist_ok=True)
 
-inference_code = '''
-import os
-import json
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
+# inference.py is already at scripts/inference/inference.py — just verify it exists
+if not os.path.exists("scripts/inference/inference.py") or os.path.getsize("scripts/inference/inference.py") == 0:
+    raise RuntimeError("scripts/inference/inference.py is missing or empty! Please create it first.")
 
-model = None
-tokenizer = None
+print(f"inference.py verified ({os.path.getsize('scripts/inference/inference.py')} bytes)")
 
-def model_fn(model_dir):
-    global model, tokenizer
-
-    base_model_name = "seeklhy/OmniSQL-7B"
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_dir,
-        trust_remote_code=True,
-        use_fast=False,
-    )
-    tokenizer.pad_token = tokenizer.eos_token
-
-    base_model = AutoModelForCausalLM.from_pretrained(
-        base_model_name,
-        torch_dtype=torch.float16,
-        device_map="auto",
-        trust_remote_code=True,
-        cache_dir="/tmp/hub_cache",
-    )
-
-    model = PeftModel.from_pretrained(base_model, model_dir)
-    model.eval()
-
-    return model
-
-def predict_fn(data, model):
-    prompt = data.get("prompt", "")
-    max_new_tokens = data.get("max_new_tokens", 256)
-
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            temperature=1.0,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-
-    generated = outputs[0][inputs["input_ids"].shape[1]:]
-    return {"generated_text": tokenizer.decode(generated, skip_special_tokens=True)}
-
-def input_fn(request_body, content_type="application/json"):
-    return json.loads(request_body)
-
-def output_fn(prediction, accept="application/json"):
-    return json.dumps(prediction)
-'''
-
-with open("scripts/inference/inference.py", "w") as f:
-    f.write(inference_code)
-
+# ── Write requirements.txt ────────────────────────────────────────────────────
 with open("scripts/inference/requirements.txt", "w") as f:
-    f.write("peft==0.12.0\n")
+    f.write("tokenizers>=0.19.0\n")
+    f.write("transformers==4.44.2\n")
+    f.write("peft>=0.12.0\n")
     f.write("accelerate==0.34.2\n")
 
-print("Inference scripts created")
+print("requirements.txt written")
 
-# ── Package and upload inference code ─────────────────────────────────────────
-with tarfile.open("scripts/inference/sourcedir.tar.gz", "w:gz") as tar:
-    tar.add("scripts/inference/inference.py", arcname="inference.py")
-    tar.add("scripts/inference/requirements.txt", arcname="requirements.txt")
+# ── Repack model.tar.gz to include inference.py + requirements.txt ────────────
+print("Repacking model with inference.py and requirements.txt...")
+repack_dir = "/tmp/model_repack"
 
-s3 = boto3.client("s3", region_name=region)
-s3.upload_file(
-    "scripts/inference/sourcedir.tar.gz",
-    model_bucket,
-    "inference/sourcedir.tar.gz",
-)
-print("Inference code uploaded to S3")
+# Clean and recreate repack dir
+subprocess.check_call(["rm", "-rf", repack_dir])
+os.makedirs(repack_dir, exist_ok=True)
 
-# ── Model artifacts already in S3 ─────────────────────────────────────────────
-print("Model artifacts ready at s3://omnisql-dev-models-540659119855/models/omnisql-pg-v1/model.tar.gz")
+# Extract existing model
+subprocess.check_call([
+    "tar", "-xzf",
+    os.path.expanduser("~/omnisql-model/model.tar.gz"),
+    "-C", repack_dir
+])
 
-# ── Use verified correct image URI ────────────────────────────────────────────
-image_uri = f"763104351884.dkr.ecr.{region}.amazonaws.com/pytorch-inference:2.1.0-gpu-py310-cu118-ubuntu20.04-sagemaker"
+# Copy inference.py and requirements.txt into model dir
+subprocess.check_call(["cp", "scripts/inference/inference.py", repack_dir])
+subprocess.check_call(["cp", "scripts/inference/requirements.txt", repack_dir])
+
+# Repack
+repacked_path = os.path.expanduser("~/omnisql-model/model_with_code.tar.gz")
+with tarfile.open(repacked_path, "w:gz") as tar:
+    for f in os.listdir(repack_dir):
+        tar.add(os.path.join(repack_dir, f), arcname=f)
+
+print(f"Repacked model: {repacked_path}")
+
+# ── Upload repacked model to S3 ───────────────────────────────────────────────
+print("Uploading repacked model to S3...")
+s3.upload_file(repacked_path, model_bucket, "models/omnisql-pg-v1/model.tar.gz")
+print("Model uploaded")
+
+# ── Use HuggingFace inference container ───────────────────────────────────────
+image_uri = f"763104351884.dkr.ecr.{region}.amazonaws.com/huggingface-pytorch-inference:2.1.0-transformers4.37.0-gpu-py310-cu118-ubuntu20.04"
 print(f"Using image: {image_uri}")
 
 # ── Create SageMaker model ────────────────────────────────────────────────────
@@ -115,9 +76,10 @@ client.create_model(
         "ModelDataUrl": f"s3://{model_bucket}/models/omnisql-pg-v1/model.tar.gz",
         "Environment": {
             "SAGEMAKER_PROGRAM": "inference.py",
-            "SAGEMAKER_SUBMIT_DIRECTORY": f"s3://{model_bucket}/inference/sourcedir.tar.gz",
             "SAGEMAKER_CONTAINER_LOG_LEVEL": "20",
             "HUGGINGFACE_HUB_CACHE": "/tmp/hub_cache",
+            "TS_DEFAULT_STARTUP_TIMEOUT": "600",
+            "HF_TASK": "text-generation",
         },
     },
     ExecutionRoleArn=role_arn,

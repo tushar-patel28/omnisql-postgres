@@ -1,6 +1,6 @@
-
 import os
 import json
+import shutil
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
@@ -8,13 +8,29 @@ from peft import PeftModel
 model = None
 tokenizer = None
 
-def model_fn(model_dir):
+def model_fn(model_dir, context=None):
     global model, tokenizer
 
     base_model_name = "seeklhy/OmniSQL-7B"
 
+    # ── Copy model dir to /tmp so we can patch adapter_config.json ────────────
+    tmp_model_dir = "/tmp/peft_model"
+    if os.path.exists(tmp_model_dir):
+        shutil.rmtree(tmp_model_dir)
+    shutil.copytree(model_dir, tmp_model_dir)
+
+    # ── Patch adapter_config.json to remove unsupported keys ──────────────────
+    config_path = os.path.join(tmp_model_dir, "adapter_config.json")
+    with open(config_path) as f:
+        adapter_config = json.load(f)
+    for key in ["layer_replication", "use_dora", "use_rslora", "rank_pattern", "alpha_pattern"]:
+        adapter_config.pop(key, None)
+    with open(config_path, "w") as f:
+        json.dump(adapter_config, f)
+    print("Patched adapter_config.json successfully")
+
     tokenizer = AutoTokenizer.from_pretrained(
-        model_dir,
+        tmp_model_dir,
         trust_remote_code=True,
         use_fast=False,
     )
@@ -28,7 +44,7 @@ def model_fn(model_dir):
         cache_dir="/tmp/hub_cache",
     )
 
-    model = PeftModel.from_pretrained(base_model, model_dir)
+    model = PeftModel.from_pretrained(base_model, tmp_model_dir)
     model.eval()
 
     return model
