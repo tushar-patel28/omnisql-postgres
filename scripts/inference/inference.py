@@ -38,7 +38,7 @@ def model_fn(model_dir, context=None):
 
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,   # ← CHANGED from float16 — fixes Qwen2 numerical issues
         device_map="auto",
         trust_remote_code=True,
         cache_dir="/tmp/hub_cache",
@@ -46,6 +46,7 @@ def model_fn(model_dir, context=None):
 
     model = PeftModel.from_pretrained(base_model, tmp_model_dir)
     model.eval()
+    print("Loaded with LoRA adapter in bfloat16")
 
     return model
 
@@ -65,7 +66,10 @@ def predict_fn(data, model):
         )
 
     generated = outputs[0][inputs["input_ids"].shape[1]:]
-    return {"generated_text": tokenizer.decode(generated, skip_special_tokens=True)}
+    text = tokenizer.decode(generated, skip_special_tokens=True)
+    print(f"DEBUG Generated token IDs: {generated.tolist()[:30]}")
+    print(f"DEBUG Decoded text: {repr(text)}")
+    return {"generated_text": text}
 
 def input_fn(request_body, content_type="application/json"):
     return json.loads(request_body)

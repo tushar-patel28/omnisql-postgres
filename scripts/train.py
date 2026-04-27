@@ -72,27 +72,53 @@ lora_config = LoraConfig(
 model = get_peft_model(model, lora_config)
 model.print_trainable_parameters()
 
-# ── Tokenize upfront — no dataset.map() ───────────────────────────────────────
-print("Tokenizing dataset...")
+# ── Tokenize with prompt masking ──────────────────────────────────────────────
+# Only train on the SQL answer portion — mask schema+question tokens with -100
+print("Tokenizing dataset with prompt masking...")
 all_input_ids = []
 all_attention_masks = []
 all_labels = []
 
+MAX_LENGTH = 512
+
 for r in records:
-    text = (
+    prompt = (
         f"### Schema:\n{r['schema_ddl']}\n\n"
         f"### Question:\n{r['question']}\n\n"
-        f"### SQL:\n{r['sql']}"
+        f"### SQL:\n"
     )
-    enc = tokenizer(
-        text,
+    answer = r['sql']
+    full_text = prompt + answer
+
+    # Tokenize prompt and full text — both WITHOUT special tokens for accurate boundary alignment
+    prompt_tokens = tokenizer(prompt, add_special_tokens=False)["input_ids"]
+    full_tokens = tokenizer(
+        full_text,
         truncation=True,
-        max_length=512,
+        max_length=MAX_LENGTH,
         padding="max_length",
+        add_special_tokens=False,   # ← FIX: prevents boundary misalignment that caused token 0 artifacts
     )
-    all_input_ids.append(enc["input_ids"])
-    all_attention_masks.append(enc["attention_mask"])
-    all_labels.append(enc["input_ids"].copy())
+
+    input_ids = full_tokens["input_ids"]
+    attention_mask = full_tokens["attention_mask"]
+
+    # Build labels: -100 for prompt tokens, actual ids for answer tokens, -100 for padding
+    labels = input_ids.copy()
+    prompt_len = len(prompt_tokens)
+
+    # Mask prompt portion
+    for i in range(min(prompt_len, MAX_LENGTH)):
+        labels[i] = -100
+
+    # Mask padding (where attention_mask is 0)
+    for i in range(MAX_LENGTH):
+        if attention_mask[i] == 0:
+            labels[i] = -100
+
+    all_input_ids.append(input_ids)
+    all_attention_masks.append(attention_mask)
+    all_labels.append(labels)
 
 tokenized_dataset = Dataset.from_dict({
     "input_ids": all_input_ids,
@@ -101,18 +127,24 @@ tokenized_dataset = Dataset.from_dict({
 })
 print(f"Tokenized dataset: {len(tokenized_dataset)} examples")
 
+# Verify masking worked — at least some labels should be -100
+sample_labels = all_labels[0]
+n_masked = sum(1 for l in sample_labels if l == -100)
+n_train = sum(1 for l in sample_labels if l != -100)
+print(f"Sample 0: {n_masked} masked tokens, {n_train} training tokens")
+
 # ── Training args ─────────────────────────────────────────────────────────────
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
-    num_train_epochs=3,
+    num_train_epochs=1,
     per_device_train_batch_size=1,
     gradient_accumulation_steps=16,
-    learning_rate=2e-4,              
+    learning_rate=1e-4,
     lr_scheduler_type="cosine",
     warmup_ratio=0.03,
-    max_grad_norm=1.0,               
-    bf16=True,                       
-    fp16=False,                      
+    max_grad_norm=1.0,
+    bf16=True,
+    fp16=False,
     logging_steps=10,
     save_strategy="epoch",
     report_to="none",
