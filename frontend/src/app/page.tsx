@@ -1,6 +1,7 @@
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { SectionLabel } from "@/components/section-label";
+import { DemoExperience } from "@/components/demo/demo-experience";
 
 export default function Home() {
   return (
@@ -36,7 +37,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Demo (placeholder) ─────────────────────────────────────── */}
+        {/* ── Demo ───────────────────────────────────────────────────── */}
         <section
           id="demo"
           className="max-w-7xl mx-auto px-6 py-24 scroll-mt-20"
@@ -46,10 +47,7 @@ export default function Home() {
             Ask anything across five schemas.
           </h2>
 
-          <Placeholder height="h-[600px]">
-            Demo component goes here — schema tabs, question input,
-            streaming SQL output, results table.
-          </Placeholder>
+          <DemoExperience />
         </section>
 
         {/* ── Metrics (placeholder) ──────────────────────────────────── */}
