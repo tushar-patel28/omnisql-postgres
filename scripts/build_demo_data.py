@@ -1,14 +1,13 @@
 """
 scripts/build_demo_data.py
 ---------------------------
-Pulls real predictions from the fine-tuned eval JSONL and produces
-a TypeScript demo-data file for the frontend.
+Pulls real predictions from the eval JSONL files (fine-tuned + baseline)
+and produces a TypeScript demo-data file for the frontend.
 
-Selection strategy:
-  - Force diversity: each schema gets one example per complexity tier
-    where possible (simple -> moderate -> complex -> highly_complex)
-  - Prefer exec_match=true within each tier
-  - Output 12-16 examples that span the full difficulty range
+Outputs:
+  - 20 demo examples (4 per schema, varied complexity)
+  - Aggregated metrics: overall, per-schema, per-complexity
+    for both baseline and fine-tuned
 
 Usage:
     python scripts/build_demo_data.py
@@ -18,11 +17,12 @@ import json
 import random
 import re
 from pathlib import Path
-from collections import defaultdict
+from collections import defaultdict, Counter
 
-EVAL_FILE = "data/eval_omnisql-pg-finetuned-full_20260505_132926.jsonl"
-OUTPUT_FILE = "frontend/src/lib/demo-data.ts"
-SEED = 42
+EVAL_FT       = "data/eval_omnisql-pg-finetuned-full_20260505_132926.jsonl"
+EVAL_BASELINE = "data/eval_omnisql-7b-baseline-full_20260505_145351.jsonl"
+OUTPUT_FILE   = "frontend/src/lib/demo-data.ts"
+SEED          = 42
 
 SCHEMA_LABELS = {
     "ecommerce":      {"label": "E-commerce",   "icon": "ShoppingBag", "color": "#6ea8ff"},
@@ -32,8 +32,13 @@ SCHEMA_LABELS = {
     "saas_analytics": {"label": "SaaS",         "icon": "BarChart3",   "color": "#c084ff"},
 }
 
-# Per schema: which complexity tiers we want represented (in order of preference)
 COMPLEXITY_TARGETS = ["simple", "moderate", "complex", "highly_complex"]
+COMPLEXITY_LABELS = {
+    "simple": "Simple",
+    "moderate": "Moderate",
+    "complex": "Complex",
+    "highly_complex": "Highly complex",
+}
 
 
 def load_eval(path: str):
@@ -46,56 +51,90 @@ def load_eval(path: str):
     return rows
 
 
-def pick_examples(rows: list[dict]) -> list[dict]:
-    """For each schema, pick one example per complexity tier (where available)."""
-    rng = random.Random(SEED)
-    by_schema_complexity: dict[tuple[str, str], list[dict]] = defaultdict(list)
+# ── Aggregation ──────────────────────────────────────────────────────────────
+
+def compute_breakdowns(rows: list[dict]):
+    """Return overall + per-schema + per-complexity stats."""
+    n = len(rows) or 1
+
+    overall = {
+        "executionAccuracy": sum(r.get("exec_match", False) for r in rows) / n,
+        "validityRate":      sum(r.get("exec_success", False) for r in rows) / n,
+        "bleu":              sum(r.get("bleu", 0) for r in rows) / n,
+    }
+
+    by_schema = defaultdict(list)
     for r in rows:
-        by_schema_complexity[(r["schema_name"], r.get("complexity", "moderate"))].append(r)
+        by_schema[r["schema_name"]].append(r)
+
+    schema_breakdown = {}
+    for s, items in by_schema.items():
+        nn = len(items) or 1
+        schema_breakdown[s] = {
+            "executionAccuracy": sum(x.get("exec_match", False) for x in items) / nn,
+            "validityRate":      sum(x.get("exec_success", False) for x in items) / nn,
+        }
+
+    by_complexity = defaultdict(list)
+    for r in rows:
+        by_complexity[r.get("complexity", "moderate")].append(r)
+
+    complexity_breakdown = {}
+    for c, items in by_complexity.items():
+        nn = len(items) or 1
+        complexity_breakdown[c] = {
+            "executionAccuracy": sum(x.get("exec_match", False) for x in items) / nn,
+            "validityRate":      sum(x.get("exec_success", False) for x in items) / nn,
+        }
+
+    return overall, schema_breakdown, complexity_breakdown
+
+
+# ── Example selection ────────────────────────────────────────────────────────
+
+def pick_examples(rows: list[dict]) -> list[dict]:
+    """For each schema, pick one example per complexity tier where available."""
+    rng = random.Random(SEED)
+    by_sc: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for r in rows:
+        by_sc[(r["schema_name"], r.get("complexity", "moderate"))].append(r)
 
     selected = []
-
     for schema in SCHEMA_LABELS:
         for complexity in COMPLEXITY_TARGETS:
-            candidates = by_schema_complexity.get((schema, complexity), [])
-            if not candidates:
+            cands = by_sc.get((schema, complexity), [])
+            if not cands:
                 continue
-
-            # Prefer exec_match=true, then highest BLEU, then shortest question (cleaner demo)
-            candidates.sort(
+            cands.sort(
                 key=lambda r: (
                     not r.get("exec_match", False),
                     -float(r.get("bleu", 0)),
                     len(r.get("question", "")),
                 )
             )
-            selected.append(candidates[0])
+            selected.append(cands[0])
 
     rng.shuffle(selected)
     return selected
 
 
-# ── Smarter fake rows ────────────────────────────────────────────────────────
+# ── Fake row synthesis (unchanged) ───────────────────────────────────────────
 
 NAMES = ["Alice Chen", "Bob Williams", "Carol Singh", "Dave Park",
          "Eve Martinez", "Frank Liu", "Grace Patel", "Henry Brown"]
 
 
 def fake_result_rows(generated_sql: str, schema_name: str, idx: int) -> list[dict]:
-    """Synthesize plausible result rows that match the SQL shape."""
     sql = generated_sql.lower()
 
-    # 1) Single COUNT scalar
     if re.search(r"select\s+count\s*\(\s*\*\s*\)", sql) and "group by" not in sql:
         return [{"count": 47 + idx * 13}]
 
-    # 2) Single AVG / SUM scalar
     if re.search(r"select\s+(avg|sum)\s*\(", sql) and "group by" not in sql:
         if "avg" in sql:
             return [{"avg": round(2_847.39 + idx * 100, 2)}]
         return [{"total": round(184_392.55 + idx * 1000, 2)}]
 
-    # 3) GROUP BY — categorical breakdown
     if "group by" in sql:
         groups = {
             "ecommerce":      ["electronics", "clothing", "books", "home"],
@@ -105,47 +144,33 @@ def fake_result_rows(generated_sql: str, schema_name: str, idx: int) -> list[dic
             "saas_analytics": ["pro", "free", "enterprise", "team"],
         }.get(schema_name, ["A", "B", "C", "D"])
 
-        # Decide column names from SELECT clause shape
         if "count(" in sql:
             return [{"name": k, "count": (i + 2) * 7} for i, k in enumerate(groups)]
         if "avg(" in sql:
-            return [
-                {"name": k, "avg": round(1247.50 + i * 432.10, 2)}
-                for i, k in enumerate(groups)
-            ]
+            return [{"name": k, "avg": round(1247.50 + i * 432.10, 2)} for i, k in enumerate(groups)]
         if "sum(" in sql:
-            return [
-                {"name": k, "total": round(12_400 + i * 8_750, 2)}
-                for i, k in enumerate(groups)
-            ]
+            return [{"name": k, "total": round(12_400 + i * 8_750, 2)} for i, k in enumerate(groups)]
         return [{"name": k, "value": round(347.50 * (i + 2), 2)} for i, k in enumerate(groups)]
 
-    # 4) Email lookup
     if "email" in sql:
-        return [{"email": f"{n.lower().replace(' ', '.')}@example.com"}
-                for n in NAMES[:4]]
+        return [{"email": f"{n.lower().replace(' ', '.')}@example.com"} for n in NAMES[:4]]
 
-    # 5) Name lookup
     if re.search(r"select\s+(distinct\s+)?\w*\.?name", sql):
         return [{"name": n} for n in NAMES[:5]]
 
-    # 6) MRN (healthcare specific)
     if "mrn" in sql:
         return [{"mrn": f"MRN-{1000 + i * 137:04d}"} for i in range(5)]
 
-    # 7) Title (HR specific — DISTINCT title)
     if "title" in sql and "distinct" in sql:
         return [{"title": t} for t in
                 ["Engineer", "Senior Engineer", "Manager", "Director", "Analyst"]]
 
-    # 8) ORDER BY ... LIMIT — top-N
     if "limit" in sql:
         return [
             {"id": i + 1, "name": NAMES[i], "score": round(95.3 - i * 4.2, 1)}
             for i in range(5)
         ]
 
-    # 9) Generic SELECT * — return rows shaped per schema
     if "select *" in sql:
         per_schema = {
             "ecommerce":      [{"id": i + 1, "user_id": 100 + i, "total": round(125 * (i + 1), 2), "status": s}
@@ -162,9 +187,10 @@ def fake_result_rows(generated_sql: str, schema_name: str, idx: int) -> list[dic
         }
         return per_schema.get(schema_name, [{"id": i + 1} for i in range(4)])
 
-    # 10) Fallback: scalar
     return [{"value": f"result_{i+1}"} for i in range(3)]
 
+
+# ── TS emission ──────────────────────────────────────────────────────────────
 
 def to_ts_examples(examples: list[dict]) -> str:
     items = []
@@ -172,55 +198,61 @@ def to_ts_examples(examples: list[dict]) -> str:
         question = ex["question"].replace('"', '\\"').replace("\n", " ")
         gen_sql = ex["generated_sql"].replace("`", "\\`")
         ref_sql = ex["reference_sql"].replace("`", "\\`")
-        complexity = ex.get("complexity", "moderate")
-        bleu = ex.get("bleu", 0.0)
-        exec_match = ex.get("exec_match", False)
-        schema_name = ex["schema_name"]
-        rows = fake_result_rows(ex["generated_sql"], schema_name, i)
-
-        items.append(
-            f"""  {{
+        items.append(f"""  {{
     id: "demo-{i+1:02d}",
-    schema: "{schema_name}",
-    complexity: "{complexity}",
+    schema: "{ex['schema_name']}",
+    complexity: "{ex.get('complexity', 'moderate')}",
     question: "{question}",
     generatedSql: `{gen_sql}`,
     referenceSql: `{ref_sql}`,
-    bleu: {bleu},
-    execMatch: {str(exec_match).lower()},
+    bleu: {ex.get('bleu', 0.0)},
+    execMatch: {str(ex.get('exec_match', False)).lower()},
     latencyMs: {1200 + (i * 137) % 800},
-    rows: {json.dumps(rows, ensure_ascii=False)},
-  }}"""
-        )
+    rows: {json.dumps(fake_result_rows(ex["generated_sql"], ex["schema_name"], i), ensure_ascii=False)},
+  }}""")
+    return ",\n".join(items)
+
+
+def to_ts_breakdown(d: dict, indent: str = "    ") -> str:
+    items = []
+    for k, v in d.items():
+        items.append(f'{indent}{json.dumps(k)}: {{ '
+                     f'executionAccuracy: {v["executionAccuracy"]:.4f}, '
+                     f'validityRate: {v["validityRate"]:.4f} }}')
     return ",\n".join(items)
 
 
 def main():
-    eval_path = Path(EVAL_FILE)
-    if not eval_path.exists():
-        raise FileNotFoundError(f"Eval file not found: {EVAL_FILE}")
+    if not Path(EVAL_FT).exists():
+        raise FileNotFoundError(f"Fine-tuned eval not found: {EVAL_FT}")
+    if not Path(EVAL_BASELINE).exists():
+        raise FileNotFoundError(f"Baseline eval not found: {EVAL_BASELINE}")
 
-    rows = load_eval(EVAL_FILE)
-    print(f"Loaded {len(rows)} eval rows")
+    ft_rows = load_eval(EVAL_FT)
+    bl_rows = load_eval(EVAL_BASELINE)
+    print(f"Loaded {len(ft_rows)} fine-tuned + {len(bl_rows)} baseline rows")
 
-    selected = pick_examples(rows)
-    print(f"Selected {len(selected)} examples across {len({s['schema_name'] for s in selected})} schemas")
+    ft_overall, ft_schema, ft_complex = compute_breakdowns(ft_rows)
+    bl_overall, bl_schema, bl_complex = compute_breakdowns(bl_rows)
 
-    # Print complexity distribution for verification
-    from collections import Counter
-    print("Complexity distribution:")
-    for k, v in sorted(Counter(s["complexity"] for s in selected).items()):
-        print(f"  {k}: {v}")
+    selected = pick_examples(ft_rows)
+    print(f"Selected {len(selected)} examples")
+    print("Complexity distribution:", dict(Counter(s["complexity"] for s in selected)))
 
     schemas_block = ",\n".join(
         f'  {k}: {{ label: "{v["label"]}", icon: "{v["icon"]}", color: "{v["color"]}" }}'
         for k, v in SCHEMA_LABELS.items()
     )
+    complexity_block = ",\n".join(
+        f'  {json.dumps(k)}: {json.dumps(v)}' for k, v in COMPLEXITY_LABELS.items()
+    )
 
     examples_block = to_ts_examples(selected)
 
     ts = f"""// Auto-generated by scripts/build_demo_data.py
-// Source: {EVAL_FILE}
+// Sources:
+//   {EVAL_FT}
+//   {EVAL_BASELINE}
 // DO NOT EDIT BY HAND — regenerate via `python scripts/build_demo_data.py`
 
 export type SchemaName =
@@ -251,20 +283,53 @@ export interface SchemaMeta {{
   color: string;
 }}
 
+export interface BreakdownStat {{
+  executionAccuracy: number;
+  validityRate: number;
+}}
+
 export const SCHEMAS: Record<SchemaName, SchemaMeta> = {{
 {schemas_block},
+}};
+
+export const COMPLEXITY_LABELS: Record<Complexity, string> = {{
+{complexity_block},
 }};
 
 export const DEMO_EXAMPLES: DemoExample[] = [
 {examples_block},
 ];
 
-// Aggregated headline metrics (from real eval, see ~/omnisql-results/)
+// Aggregated metrics from real eval runs (200-pair test set each)
 export const EVAL_METRICS = {{
-  finetuned: {{ executionAccuracy: 0.46, validityRate: 0.94, bleu: 0.585 }},
-  baseline:  {{ executionAccuracy: 0.07, validityRate: 0.15, bleu: 0.204 }},
   testSize: 200,
-}};
+  finetuned: {{
+    overall: {{
+      executionAccuracy: {ft_overall["executionAccuracy"]:.4f},
+      validityRate:      {ft_overall["validityRate"]:.4f},
+      bleu:              {ft_overall["bleu"]:.4f},
+    }},
+    bySchema: {{
+{to_ts_breakdown(ft_schema, indent="      ")}
+    }} as Record<SchemaName, BreakdownStat>,
+    byComplexity: {{
+{to_ts_breakdown(ft_complex, indent="      ")}
+    }} as Record<Complexity, BreakdownStat>,
+  }},
+  baseline: {{
+    overall: {{
+      executionAccuracy: {bl_overall["executionAccuracy"]:.4f},
+      validityRate:      {bl_overall["validityRate"]:.4f},
+      bleu:              {bl_overall["bleu"]:.4f},
+    }},
+    bySchema: {{
+{to_ts_breakdown(bl_schema, indent="      ")}
+    }} as Record<SchemaName, BreakdownStat>,
+    byComplexity: {{
+{to_ts_breakdown(bl_complex, indent="      ")}
+    }} as Record<Complexity, BreakdownStat>,
+  }},
+}} as const;
 """
 
     out_path = Path(OUTPUT_FILE)

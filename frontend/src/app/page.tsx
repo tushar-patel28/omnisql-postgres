@@ -2,6 +2,8 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { SectionLabel } from "@/components/section-label";
 import { DemoExperience } from "@/components/demo/demo-experience";
+import { MetricsSection } from "@/components/metrics-section";
+import { ArchitectureSection } from "@/components/architecture-section";
 
 export default function Home() {
   return (
@@ -50,7 +52,7 @@ export default function Home() {
           <DemoExperience />
         </section>
 
-        {/* ── Metrics (placeholder) ──────────────────────────────────── */}
+        {/* ── Metrics ────────────────────────────────────────────────── */}
         <section
           id="metrics"
           className="max-w-7xl mx-auto px-6 py-24 scroll-mt-20"
@@ -60,13 +62,10 @@ export default function Home() {
             Fine-tuning works.
           </h2>
 
-          <Placeholder height="h-[400px]">
-            Comparison chart: baseline vs fine-tuned. Per-schema breakdown.
-            Per-complexity breakdown.
-          </Placeholder>
+          <MetricsSection />
         </section>
 
-        {/* ── How it works (placeholder) ─────────────────────────────── */}
+        {/* ── How it works ───────────────────────────────────────────── */}
         <section
           id="how"
           className="max-w-7xl mx-auto px-6 py-24 scroll-mt-20"
@@ -76,10 +75,7 @@ export default function Home() {
             From question to validated SQL.
           </h2>
 
-          <Placeholder height="h-[500px]">
-            Architecture diagram: FastAPI → pgvector RAG → SageMaker
-            (LoRA + bf16) → executor with self-correction.
-          </Placeholder>
+          <ArchitectureSection />
         </section>
       </main>
 
@@ -114,28 +110,6 @@ function Stat({
       <span className={highlight ? "text-primary" : "text-foreground"}>
         {value}
       </span>
-    </div>
-  );
-}
-
-function Placeholder({
-  children,
-  height,
-}: {
-  children: React.ReactNode;
-  height: string;
-}) {
-  return (
-    <div
-      className={`
-        glass rounded-2xl ${height}
-        flex items-center justify-center
-        border-dashed
-        text-sm font-mono text-muted-foreground/60
-        text-center px-8
-      `}
-    >
-      {children}
     </div>
   );
 }
