@@ -42,11 +42,6 @@ export function SiteFooter() {
             </a>
           </div>
         </div>
-
-        <div className="mt-10 pt-6 border-t border-border/30 text-xs font-mono text-muted-foreground/60">
-          Demo runs on pre-recorded model outputs to keep hosting at $0.
-          The model itself is real — see GitHub for live deployment.
-        </div>
       </div>
     </footer>
   );

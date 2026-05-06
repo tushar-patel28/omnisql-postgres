@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   EVAL_METRICS,
   SCHEMAS,
@@ -23,18 +24,21 @@ const COMPLEXITY_ORDER: Complexity[] = [
   "highly_complex",
 ];
 
+type BreakdownView = "schema" | "complexity";
+
 export function MetricsSection() {
+  const [view, setView] = useState<BreakdownView>("schema");
+
   const ft = EVAL_METRICS.finetuned;
   const bl = EVAL_METRICS.baseline;
   const lift =
-    (ft.overall.executionAccuracy / Math.max(bl.overall.executionAccuracy, 1e-9));
+    ft.overall.executionAccuracy / Math.max(bl.overall.executionAccuracy, 1e-9);
 
   return (
     <div className="space-y-12">
       {/* ── Overall comparison ───────────────────────────────────── */}
       <div className="glass rounded-2xl p-8 md:p-12">
         <div className="grid md:grid-cols-[1.1fr_2fr] gap-10 items-center">
-          {/* Left: big number */}
           <div>
             <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3">
               Execution accuracy
@@ -55,7 +59,6 @@ export function MetricsSection() {
             </div>
           </div>
 
-          {/* Right: bar comparison */}
           <div className="space-y-4">
             <BarRow
               label="OmniSQL-Pg (fine-tuned)"
@@ -79,67 +82,60 @@ export function MetricsSection() {
                 ftValue={ft.overall.bleu.toFixed(2)}
                 blValue={bl.overall.bleu.toFixed(2)}
               />
-              <Stat
-                label="Test set"
-                ftValue={`${EVAL_METRICS.testSize} pairs`}
-              />
+              <Stat label="Test set" ftValue={`${EVAL_METRICS.testSize} pairs`} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Per-schema breakdown ────────────────────────────────── */}
+      {/* ── Breakdown with toggle ────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-6">
-          <h3 className="font-display text-2xl">By schema</h3>
+          <div className="flex items-center gap-4">
+            <h3 className="font-display text-2xl">Breakdown by</h3>
+            <Toggle view={view} onChange={setView} />
+          </div>
+
           <div className="flex items-center gap-4 text-xs font-mono">
-            <Legend color="var(--primary)" label="Fine-tuned" />
+            <Legend
+              color={view === "schema" ? "var(--primary)" : "var(--accent)"}
+              label="Fine-tuned"
+            />
             <Legend color="var(--muted-foreground)" label="Baseline" />
           </div>
         </div>
 
         <div className="glass rounded-2xl p-6 md:p-8 space-y-5">
-          {SCHEMA_ORDER.map((s) => {
-            const meta = SCHEMAS[s];
-            const ftVal = ft.bySchema[s]?.executionAccuracy ?? 0;
-            const blVal = bl.bySchema[s]?.executionAccuracy ?? 0;
-            return (
-              <PairedBars
-                key={s}
-                label={meta.label}
-                accentColor={meta.color}
-                ftValue={ftVal}
-                blValue={blVal}
-              />
-            );
-          })}
-        </div>
-      </div>
+          {view === "schema" &&
+            SCHEMA_ORDER.map((s) => {
+              const meta = SCHEMAS[s];
+              const ftVal = ft.bySchema[s]?.executionAccuracy ?? 0;
+              const blVal = bl.bySchema[s]?.executionAccuracy ?? 0;
+              return (
+                <PairedBars
+                  key={s}
+                  label={meta.label}
+                  accentColor={meta.color}
+                  ftValue={ftVal}
+                  blValue={blVal}
+                />
+              );
+            })}
 
-      {/* ── Per-complexity breakdown ────────────────────────────── */}
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-display text-2xl">By complexity</h3>
-          <div className="flex items-center gap-4 text-xs font-mono">
-            <Legend color="var(--accent)" label="Fine-tuned" />
-            <Legend color="var(--muted-foreground)" label="Baseline" />
-          </div>
-        </div>
-
-        <div className="glass rounded-2xl p-6 md:p-8 space-y-5">
-          {COMPLEXITY_ORDER.map((c) => {
-            const ftVal = ft.byComplexity[c]?.executionAccuracy ?? 0;
-            const blVal = bl.byComplexity[c]?.executionAccuracy ?? 0;
-            return (
-              <PairedBars
-                key={c}
-                label={COMPLEXITY_LABELS[c]}
-                accentColor="var(--accent)"
-                ftValue={ftVal}
-                blValue={blVal}
-              />
-            );
-          })}
+          {view === "complexity" &&
+            COMPLEXITY_ORDER.map((c) => {
+              const ftVal = ft.byComplexity[c]?.executionAccuracy ?? 0;
+              const blVal = bl.byComplexity[c]?.executionAccuracy ?? 0;
+              return (
+                <PairedBars
+                  key={c}
+                  label={COMPLEXITY_LABELS[c]}
+                  accentColor="var(--accent)"
+                  ftValue={ftVal}
+                  blValue={blVal}
+                />
+              );
+            })}
         </div>
       </div>
     </div>
@@ -150,6 +146,39 @@ export function MetricsSection() {
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
+}
+
+function Toggle({
+  view,
+  onChange,
+}: {
+  view: BreakdownView;
+  onChange: (v: BreakdownView) => void;
+}) {
+  return (
+    <div className="glass rounded-lg p-1 flex">
+      {(["schema", "complexity"] as BreakdownView[]).map((v) => {
+        const active = view === v;
+        return (
+          <button
+            key={v}
+            onClick={() => onChange(v)}
+            className={`
+              text-xs font-mono px-3 py-1.5 rounded-md
+              transition-all
+              ${
+                active
+                  ? "bg-foreground/[0.06] text-foreground shadow-[inset_0_0_0_1px_rgba(232,234,242,0.08)]"
+                  : "text-muted-foreground hover:text-foreground"
+              }
+            `}
+          >
+            {v}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function BarRow({

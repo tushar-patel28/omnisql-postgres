@@ -1,6 +1,7 @@
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { SectionLabel } from "@/components/section-label";
+import { DemoBanner } from "@/components/demo-banner";
 import { DemoExperience } from "@/components/demo/demo-experience";
 import { MetricsSection } from "@/components/metrics-section";
 import { ArchitectureSection } from "@/components/architecture-section";
@@ -9,14 +10,13 @@ export default function Home() {
   return (
     <>
       <SiteHeader />
+      <DemoBanner />
 
       <main>
         {/* ── Hero ───────────────────────────────────────────────────── */}
         <section className="max-w-7xl mx-auto px-6 pt-24 pb-32">
           <div className="max-w-3xl">
-            <SectionLabel>Phase 5 · Live</SectionLabel>
-
-            <h1 className="font-display text-5xl md:text-7xl mt-6 leading-[1.05] tracking-tight">
+            <h1 className="font-display text-5xl md:text-7xl leading-[1.05] tracking-tight">
               Natural language to{" "}
               <span className="gradient-text">PostgreSQL</span>,
               <br />
@@ -31,7 +31,7 @@ export default function Home() {
             </p>
 
             <div className="mt-12 flex flex-wrap gap-3 font-mono text-xs">
-              <Stat label="Execution accuracy" value="46.0%" highlight />
+              <Stat label="Execution accuracy" value="46.0%" />
               <Stat label="vs baseline" value="7.0%" />
               <Stat label="Validity rate" value="94.0%" />
               <Stat label="Test set" value="200 pairs" />
@@ -71,9 +71,12 @@ export default function Home() {
           className="max-w-7xl mx-auto px-6 py-24 scroll-mt-20"
         >
           <SectionLabel>How it works</SectionLabel>
-          <h2 className="font-display text-4xl md:text-5xl mt-4 mb-12 tracking-tight">
+          <h2 className="font-display text-4xl md:text-5xl mt-4 mb-4 tracking-tight">
             From question to validated SQL.
           </h2>
+          <p className="text-muted-foreground mb-12 max-w-2xl">
+            Click any stage to see implementation details.
+          </p>
 
           <ArchitectureSection />
         </section>
@@ -84,32 +87,19 @@ export default function Home() {
   );
 }
 
-/* ── Local components ────────────────────────────────────────────── */
+/* ── Stat pill ─────────────────────────────────────────────────── */
 
-function Stat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className={`
-        rounded-md px-3 py-2 border
-        ${
-          highlight
-            ? "bg-primary/10 border-primary/30 text-primary"
-            : "bg-muted/30 border-border text-muted-foreground"
-        }
-      `}
+      className="
+        rounded-md px-3 py-2
+        glass
+        text-muted-foreground
+      "
     >
       <span className="opacity-60 mr-2">{label}</span>
-      <span className={highlight ? "text-primary" : "text-foreground"}>
-        {value}
-      </span>
+      <span className="text-foreground">{value}</span>
     </div>
   );
 }
