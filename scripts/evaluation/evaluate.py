@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.config import get_settings
 from app.services.rag import build_prompt, retrieve_relevant_tables
-from app.services.inference import run_inference, extract_sql_from_response
+from app.services.inference_client import run_inference, extract_sql_from_response
 from scripts.evaluation.metrics import evaluate_single, compute_bleu, is_valid_sql
 
 structlog.configure(
@@ -60,32 +60,12 @@ def load_test_set(path: str) -> list[dict]:
 
 
 def build_prompt_from_pair(pair: dict) -> str:
-    """Build OmniSQL prompt directly from a test pair's DDL."""
-    return f"""Task Overview:
-You are a data science expert. Below, you are provided with a database schema and a natural language question. Your task is to understand the schema and generate a valid SQL query to answer the question.
-
-Database Engine:
-POSTGRESQL
-
-Database Schema:
-{pair['schema_ddl']}
-
-Question:
-{pair['question']}
-
-Instructions:
-- Generate POSTGRESQL-compatible SQL only.
-- Use PostgreSQL-specific functions where appropriate (DATE_TRUNC, ILIKE, window functions, CTEs).
-- Before generating the final SQL query, think through the steps.
-
-Output Format:
-Enclose the generated SQL query in a code block:
-```sql
--- Your SQL query
-```
-
-Take a deep breath and think step by step."""
-
+    """Build prompt matching the fine-tuning training format."""
+    return (
+        f"### Schema:\n{pair['schema_ddl']}\n\n"
+        f"### Question:\n{pair['question']}\n\n"
+        f"### SQL:\n"
+    )
 
 async def run_evaluation(
     mode: str,

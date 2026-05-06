@@ -15,11 +15,11 @@ s3 = boto3.client("s3", region_name=region)
 # ── Write inference.py ────────────────────────────────────────────────────────
 os.makedirs("scripts/inference", exist_ok=True)
 
-# inference.py is already at scripts/inference/inference.py — just verify it exists
-if not os.path.exists("scripts/inference/inference.py") or os.path.getsize("scripts/inference/inference.py") == 0:
-    raise RuntimeError("scripts/inference/inference.py is missing or empty! Please create it first.")
+# inference.py is already at scripts/inference/sagemaker_handler.py — just verify it exists
+if not os.path.exists("scripts/inference/sagemaker_handler.py") or os.path.getsize("scripts/inference/sagemaker_handler.py") == 0:
+    raise RuntimeError("scripts/inference/sagemaker_handler.py is missing or empty! Please create it first.")
 
-print(f"inference.py verified ({os.path.getsize('scripts/inference/inference.py')} bytes)")
+print(f"inference.py verified ({os.path.getsize('scripts/inference/sagemaker_handler.py')} bytes)")
 
 # ── Write requirements.txt ────────────────────────────────────────────────────
 with open("scripts/inference/requirements.txt", "w") as f:
@@ -46,7 +46,7 @@ subprocess.check_call([
 ])
 
 # Copy inference.py and requirements.txt into model dir
-subprocess.check_call(["cp", "scripts/inference/inference.py", repack_dir])
+subprocess.check_call(["cp", "scripts/inference/sagemaker_handler.py", os.path.join(repack_dir, "inference.py")])
 subprocess.check_call(["cp", "scripts/inference/requirements.txt", repack_dir])
 
 # Repack

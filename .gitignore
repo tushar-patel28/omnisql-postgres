@@ -13,3 +13,5 @@ infrastructure/terraform.tfstate
 infrastructure/terraform.tfstate.backup
 infrastructure/terraform.tfvars
 infrastructure/.terraform.lock.hcl
+# Intermediate eval runs (smoke tests)
+data/eval_*-smoke*.jsonl

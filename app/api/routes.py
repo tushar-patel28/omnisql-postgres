@@ -20,7 +20,7 @@ from app.api.schemas import (
     QueryLogItem,
 )
 from app.services.rag import register_schema, retrieve_relevant_tables, build_prompt
-from app.services.inference import run_inference
+from app.services.inference_client import run_inference
 from app.services.executor import execute_with_self_correction
 from app.services.logger import log_query, update_feedback, get_recent_logs
 

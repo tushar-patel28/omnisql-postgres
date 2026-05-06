@@ -18,7 +18,7 @@ import asyncpg
 from dataclasses import dataclass
 
 from app.config import get_settings
-from app.services.inference import run_inference, extract_sql_from_response
+from app.services.inference_client import run_inference, extract_sql_from_response
 
 log = structlog.get_logger()
 settings = get_settings()
