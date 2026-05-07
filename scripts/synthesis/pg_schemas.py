@@ -1,21 +1,21 @@
 """
 PostgreSQL Schema Templates for Data Synthesis
 ------------------------------------------------
-Each domain uses its own PostgreSQL schema namespace to avoid table conflicts.
-e.g. saas.users, healthcare.patients, fintech.accounts
+Most domains use their own PostgreSQL schema namespace to avoid table conflicts
+(e.g. saas.users, healthcare.patients, fintech.accounts).
 
-This is more realistic — real production databases use schema namespacing.
+The `ecommerce` domain is intentionally un-namespaced (public schema) to match
+the training data, eval test set, and runtime database. This ensures the model
+sees consistent table references across train, eval, and production.
 """
 
 SCHEMAS = [
     {
         "name": "ecommerce",
-        "pg_schema": "ecommerce",
+        "pg_schema": "public",
         "description": "E-commerce platform with users, products, orders",
         "ddl": """
-CREATE SCHEMA IF NOT EXISTS ecommerce;
-
-CREATE TABLE IF NOT EXISTS ecommerce.users (
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(100) NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS ecommerce.users (
     is_active BOOLEAN DEFAULT TRUE
 );
 
-CREATE TABLE IF NOT EXISTS ecommerce.products (
+CREATE TABLE IF NOT EXISTS products (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(100),
@@ -33,27 +33,27 @@ CREATE TABLE IF NOT EXISTS ecommerce.products (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS ecommerce.orders (
+CREATE TABLE IF NOT EXISTS orders (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES ecommerce.users(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
     status VARCHAR(20) DEFAULT 'pending',
     total NUMERIC(10, 2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     shipped_at TIMESTAMP WITH TIME ZONE
 );
 
-CREATE TABLE IF NOT EXISTS ecommerce.order_items (
+CREATE TABLE IF NOT EXISTS order_items (
     id SERIAL PRIMARY KEY,
-    order_id INTEGER NOT NULL REFERENCES ecommerce.orders(id),
-    product_id INTEGER NOT NULL REFERENCES ecommerce.products(id),
+    order_id INTEGER NOT NULL REFERENCES orders(id),
+    product_id INTEGER NOT NULL REFERENCES products(id),
     quantity INTEGER NOT NULL,
     unit_price NUMERIC(10, 2) NOT NULL
 );
 """,
         "sample_values": {
-            "ecommerce.users.tier": ["standard", "premium", "enterprise"],
-            "ecommerce.orders.status": ["pending", "processing", "shipped", "delivered", "cancelled"],
-            "ecommerce.products.category": ["electronics", "clothing", "books", "home", "sports"],
+            "users.tier": ["standard", "premium", "enterprise"],
+            "orders.status": ["pending", "processing", "shipped", "delivered", "cancelled"],
+            "products.category": ["electronics", "clothing", "books", "home", "sports"],
         }
     },
     {
