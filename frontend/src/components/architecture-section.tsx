@@ -108,7 +108,7 @@ const NODES: Node[] = [
       bullets: [
         {
           title: "Fine-tuning recipe",
-          body: "QLoRA r=16 alpha=32, lr=1e-4, 1 epoch on 1,800 PostgreSQL question/SQL pairs. Trained in 25 min on ml.g5.2xlarge. Loss dropped 0.7 → 0.18.",
+          body: "QLoRA r=16 alpha=32, lr=1e-4, 1 epoch on 2,400 PostgreSQL question/SQL pairs. Trained in 31 min on ml.g5.2xlarge. Loss dropped 0.65 → 0.17.",
         },
         {
           title: "bf16, not fp16",
@@ -120,7 +120,7 @@ const NODES: Node[] = [
         },
         {
           title: "Eval result",
-          body: "46% execution accuracy on 200 held-out queries vs 7% for the unmodified base model — a 6.6× improvement attributable purely to fine-tuning.",
+          body: "66% execution accuracy on 200 held-out queries vs 23% for the zero-shot baseline under matched beam-search decoding — a 2.9× improvement attributable to fine-tuning.",
         },
       ],
     },

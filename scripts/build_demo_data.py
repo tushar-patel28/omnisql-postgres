@@ -19,8 +19,8 @@ import re
 from pathlib import Path
 from collections import defaultdict, Counter
 
-EVAL_FT       = "data/eval_omnisql-pg-finetuned-full_20260505_132926.jsonl"
-EVAL_BASELINE = "data/eval_omnisql-7b-baseline-full_20260505_145351.jsonl"
+EVAL_FT       = "data/eval_omnisql-pg-v2-beam4_20260512_123345.jsonl"
+EVAL_BASELINE = "data/eval_omnisql-baseline-beam4_20260512_142518.jsonl"
 OUTPUT_FILE   = "frontend/src/lib/demo-data.ts"
 SEED          = 42
 
