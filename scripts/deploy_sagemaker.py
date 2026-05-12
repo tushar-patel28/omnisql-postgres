@@ -1,115 +1,237 @@
-import boto3
-import tarfile
+"""
+scripts/deploy_sagemaker.py
+-----------------------------
+Deploys a fine-tuned model as a SageMaker async-inference endpoint.
+
+Pulls training artifacts directly from S3 (no ~/omnisql-model/ cache needed),
+re-packs them with inference.py + requirements.txt, and pushes a versioned
+copy to s3://<model_bucket>/models/<version>/model.tar.gz.
+
+Then creates/updates a SageMaker model, endpoint config, and endpoint.
+
+Usage:
+    # Deploy from a specific training job
+    python scripts/deploy_sagemaker.py \\
+        --training-job-name omnisql-finetune-20260512-101400 \\
+        --version omnisql-pg-v2
+
+    # Or use the latest training job automatically
+    python scripts/deploy_sagemaker.py --version omnisql-pg-v2
+"""
+
+import argparse
 import os
+import shutil
 import subprocess
+import sys
+import tarfile
 from datetime import datetime
+from pathlib import Path
 
-region = "us-east-1"
-role_arn = "arn:aws:iam::540659119855:role/omnisql-dev-sagemaker-role"
-model_bucket = "omnisql-dev-models-540659119855"
-endpoint_name = "omnisql-pg-endpoint"
+import boto3
 
-client = boto3.client("sagemaker", region_name=region)
-s3 = boto3.client("s3", region_name=region)
 
-# ── Write inference.py ────────────────────────────────────────────────────────
-os.makedirs("scripts/inference", exist_ok=True)
+REGION = "us-east-1"
+ROLE_ARN = "arn:aws:iam::540659119855:role/omnisql-dev-sagemaker-role"
+MODEL_BUCKET = "omnisql-dev-models-540659119855"
+ENDPOINT_NAME = "omnisql-pg-endpoint"
 
-# inference.py is already at scripts/inference/sagemaker_handler.py — just verify it exists
-if not os.path.exists("scripts/inference/sagemaker_handler.py") or os.path.getsize("scripts/inference/sagemaker_handler.py") == 0:
-    raise RuntimeError("scripts/inference/sagemaker_handler.py is missing or empty! Please create it first.")
+INFERENCE_HANDLER = "scripts/inference/sagemaker_handler.py"
+INFERENCE_REQUIREMENTS = "scripts/inference/requirements.txt"
 
-print(f"inference.py verified ({os.path.getsize('scripts/inference/sagemaker_handler.py')} bytes)")
 
-# ── Write requirements.txt ────────────────────────────────────────────────────
-with open("scripts/inference/requirements.txt", "w") as f:
-    f.write("tokenizers>=0.19.0\n")
-    f.write("transformers==4.44.2\n")
-    f.write("peft>=0.12.0\n")
-    f.write("accelerate==0.34.2\n")
+def latest_training_job(sm_client) -> str:
+    """Return the most recent omnisql-finetune-* training job name."""
+    resp = sm_client.list_training_jobs(
+        NameContains="omnisql-finetune-",
+        StatusEquals="Completed",
+        SortBy="CreationTime",
+        SortOrder="Descending",
+        MaxResults=1,
+    )
+    jobs = resp.get("TrainingJobSummaries", [])
+    if not jobs:
+        raise RuntimeError("No completed omnisql-finetune-* training jobs found.")
+    return jobs[0]["TrainingJobName"]
 
-print("requirements.txt written")
 
-# ── Repack model.tar.gz to include inference.py + requirements.txt ────────────
-print("Repacking model with inference.py and requirements.txt...")
-repack_dir = "/tmp/model_repack"
+def training_artifacts_s3_uri(sm_client, training_job_name: str) -> str:
+    """Resolve the S3 URI of the model.tar.gz produced by a training job."""
+    resp = sm_client.describe_training_job(TrainingJobName=training_job_name)
+    if resp["TrainingJobStatus"] != "Completed":
+        raise RuntimeError(
+            f"Training job {training_job_name} is not Completed "
+            f"(status: {resp['TrainingJobStatus']})"
+        )
+    return resp["ModelArtifacts"]["S3ModelArtifacts"]
 
-# Clean and recreate repack dir
-subprocess.check_call(["rm", "-rf", repack_dir])
-os.makedirs(repack_dir, exist_ok=True)
 
-# Extract existing model
-subprocess.check_call([
-    "tar", "-xzf",
-    os.path.expanduser("~/omnisql-model/model.tar.gz"),
-    "-C", repack_dir
-])
+def parse_s3_uri(uri: str) -> tuple[str, str]:
+    """s3://bucket/key/path → ('bucket', 'key/path')"""
+    assert uri.startswith("s3://"), uri
+    rest = uri[len("s3://"):]
+    bucket, _, key = rest.partition("/")
+    return bucket, key
 
-# Copy inference.py and requirements.txt into model dir
-subprocess.check_call(["cp", "scripts/inference/sagemaker_handler.py", os.path.join(repack_dir, "inference.py")])
-subprocess.check_call(["cp", "scripts/inference/requirements.txt", repack_dir])
 
-# Repack
-repacked_path = os.path.expanduser("~/omnisql-model/model_with_code.tar.gz")
-with tarfile.open(repacked_path, "w:gz") as tar:
-    for f in os.listdir(repack_dir):
-        tar.add(os.path.join(repack_dir, f), arcname=f)
+def ensure_inference_requirements():
+    """Write requirements.txt if missing."""
+    os.makedirs("scripts/inference", exist_ok=True)
+    if not os.path.exists(INFERENCE_HANDLER):
+        raise RuntimeError(
+            f"{INFERENCE_HANDLER} is missing! Create it before deploying."
+        )
+    with open(INFERENCE_REQUIREMENTS, "w") as f:
+        f.write("tokenizers>=0.19.0\n")
+        f.write("transformers==4.44.2\n")
+        f.write("peft>=0.12.0\n")
+        f.write("accelerate==0.34.2\n")
 
-print(f"Repacked model: {repacked_path}")
 
-# ── Upload repacked model to S3 ───────────────────────────────────────────────
-print("Uploading repacked model to S3...")
-s3.upload_file(repacked_path, model_bucket, "models/omnisql-pg-v1/model.tar.gz")
-print("Model uploaded")
+def repack_with_inference_code(
+    s3_client,
+    source_uri: str,
+    version: str,
+) -> str:
+    """
+    Download training artifacts from S3, add inference.py + requirements.txt,
+    repack, and upload to s3://<model_bucket>/models/<version>/model.tar.gz.
+    Returns the destination S3 URI.
+    """
+    src_bucket, src_key = parse_s3_uri(source_uri)
 
-# ── Use HuggingFace inference container ───────────────────────────────────────
-image_uri = f"763104351884.dkr.ecr.{region}.amazonaws.com/huggingface-pytorch-inference:2.1.0-transformers4.37.0-gpu-py310-cu118-ubuntu20.04"
-print(f"Using image: {image_uri}")
+    workdir = Path("/tmp/model_repack")
+    if workdir.exists():
+        shutil.rmtree(workdir)
+    workdir.mkdir(parents=True)
 
-# ── Create SageMaker model ────────────────────────────────────────────────────
-model_name = f"omnisql-pg-v1-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    # ── Download ─────────────────────────────────────────────────────────────
+    src_tar = workdir / "src_model.tar.gz"
+    print(f"[1/4] Downloading {source_uri}")
+    s3_client.download_file(src_bucket, src_key, str(src_tar))
 
-client.create_model(
-    ModelName=model_name,
-    PrimaryContainer={
-        "Image": image_uri,
-        "ModelDataUrl": f"s3://{model_bucket}/models/omnisql-pg-v1/model.tar.gz",
-        "Environment": {
-            "SAGEMAKER_PROGRAM": "inference.py",
-            "SAGEMAKER_CONTAINER_LOG_LEVEL": "20",
-            "HUGGINGFACE_HUB_CACHE": "/tmp/hub_cache",
-            "TS_DEFAULT_STARTUP_TIMEOUT": "600",
-            "HF_TASK": "text-generation",
+    # ── Extract ──────────────────────────────────────────────────────────────
+    extract_dir = workdir / "extracted"
+    extract_dir.mkdir()
+    print(f"[2/4] Extracting to {extract_dir}")
+    subprocess.check_call(["tar", "-xzf", str(src_tar), "-C", str(extract_dir)])
+
+    # ── Inject inference code ────────────────────────────────────────────────
+    print("[3/4] Adding inference.py + requirements.txt")
+    shutil.copy(INFERENCE_HANDLER, extract_dir / "inference.py")
+    shutil.copy(INFERENCE_REQUIREMENTS, extract_dir / "requirements.txt")
+
+    # ── Repack and upload ────────────────────────────────────────────────────
+    repacked = workdir / "model_with_code.tar.gz"
+    with tarfile.open(repacked, "w:gz") as tar:
+        for entry in extract_dir.iterdir():
+            tar.add(str(entry), arcname=entry.name)
+
+    dest_key = f"models/{version}/model.tar.gz"
+    print(f"[4/4] Uploading to s3://{MODEL_BUCKET}/{dest_key}")
+    s3_client.upload_file(str(repacked), MODEL_BUCKET, dest_key)
+
+    return f"s3://{MODEL_BUCKET}/{dest_key}"
+
+
+def deploy_endpoint(sm_client, model_data_url: str, version: str):
+    """Create or update the SageMaker endpoint pointing to model_data_url."""
+    image_uri = (
+        f"763104351884.dkr.ecr.{REGION}.amazonaws.com/"
+        f"huggingface-pytorch-inference:2.1.0-transformers4.37.0-gpu-py310-cu118-ubuntu20.04"
+    )
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    model_name = f"{version}-{timestamp}"
+    config_name = f"{version}-config-{timestamp}"
+
+    print(f"Creating model: {model_name}")
+    sm_client.create_model(
+        ModelName=model_name,
+        PrimaryContainer={
+            "Image": image_uri,
+            "ModelDataUrl": model_data_url,
+            "Environment": {
+                "SAGEMAKER_PROGRAM": "inference.py",
+                "SAGEMAKER_CONTAINER_LOG_LEVEL": "20",
+                "HUGGINGFACE_HUB_CACHE": "/tmp/hub_cache",
+                "TS_DEFAULT_STARTUP_TIMEOUT": "600",
+                "HF_TASK": "text-generation",
+            },
         },
-    },
-    ExecutionRoleArn=role_arn,
-)
-print(f"Model created: {model_name}")
+        ExecutionRoleArn=ROLE_ARN,
+    )
 
-# ── Create endpoint config ────────────────────────────────────────────────────
-config_name = f"omnisql-pg-config-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-
-client.create_endpoint_config(
-    EndpointConfigName=config_name,
-    ProductionVariants=[{
-        "VariantName": "primary",
-        "ModelName": model_name,
-        "InstanceType": "ml.g5.2xlarge",
-        "InitialInstanceCount": 1,
-    }],
-    AsyncInferenceConfig={
-        "OutputConfig": {
-            "S3OutputPath": f"s3://{model_bucket}/inference-outputs/",
+    print(f"Creating endpoint config: {config_name}")
+    sm_client.create_endpoint_config(
+        EndpointConfigName=config_name,
+        ProductionVariants=[{
+            "VariantName": "primary",
+            "ModelName": model_name,
+            "InstanceType": "ml.g5.2xlarge",
+            "InitialInstanceCount": 1,
+        }],
+        AsyncInferenceConfig={
+            "OutputConfig": {
+                "S3OutputPath": f"s3://{MODEL_BUCKET}/inference-outputs/",
+            },
         },
-    },
-)
-print(f"Endpoint config created: {config_name}")
+    )
 
-# ── Create endpoint ───────────────────────────────────────────────────────────
-client.create_endpoint(
-    EndpointName=endpoint_name,
-    EndpointConfigName=config_name,
-)
-print(f"Endpoint deploying: {endpoint_name}")
-print("This takes ~10 minutes. Monitor with:")
-print(f"aws sagemaker describe-endpoint --endpoint-name {endpoint_name} --region {region} --query 'EndpointStatus'")
+    # ── Create or update endpoint ────────────────────────────────────────────
+    try:
+        sm_client.describe_endpoint(EndpointName=ENDPOINT_NAME)
+        print(f"Endpoint {ENDPOINT_NAME} exists — updating to new config")
+        sm_client.update_endpoint(
+            EndpointName=ENDPOINT_NAME,
+            EndpointConfigName=config_name,
+        )
+    except sm_client.exceptions.ClientError:
+        print(f"Creating new endpoint: {ENDPOINT_NAME}")
+        sm_client.create_endpoint(
+            EndpointName=ENDPOINT_NAME,
+            EndpointConfigName=config_name,
+        )
+
+    print()
+    print("Endpoint deploying. Takes ~8-10 minutes.")
+    print("Monitor with:")
+    print(
+        f"  aws sagemaker describe-endpoint --endpoint-name {ENDPOINT_NAME} "
+        f"--region {REGION} --query 'EndpointStatus' --output text"
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--training-job-name",
+        help="SageMaker training job to deploy (default: latest completed job)",
+    )
+    parser.add_argument(
+        "--version",
+        default="omnisql-pg-v2",
+        help="Version tag for the model (used in S3 path and SM model name)",
+    )
+    args = parser.parse_args()
+
+    sm = boto3.client("sagemaker", region_name=REGION)
+    s3 = boto3.client("s3", region_name=REGION)
+
+    job_name = args.training_job_name or latest_training_job(sm)
+    print(f"Source training job: {job_name}")
+
+    source_uri = training_artifacts_s3_uri(sm, job_name)
+    print(f"Source artifacts:    {source_uri}")
+    print(f"Target version:      {args.version}")
+    print()
+
+    ensure_inference_requirements()
+    model_data_url = repack_with_inference_code(s3, source_uri, args.version)
+    print()
+    print(f"Deploying endpoint with model: {model_data_url}")
+    print()
+    deploy_endpoint(sm, model_data_url, args.version)
+
+
+if __name__ == "__main__":
+    main()

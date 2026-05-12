@@ -27,7 +27,7 @@ def load_jsonl(path):
                 records.append(json.loads(line))
     return records
 
-data_path = os.path.join(DATA_DIR, "pg_finetune.jsonl")
+data_path = os.path.join(DATA_DIR, "pg_finetune_v2_combined.jsonl")
 records = load_jsonl(data_path)
 print(f"Loaded {len(records)} training examples")
 
