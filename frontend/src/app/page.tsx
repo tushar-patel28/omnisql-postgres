@@ -26,12 +26,12 @@ export default function Home() {
             <p className="mt-8 text-lg text-muted-foreground leading-relaxed max-w-2xl">
               An MLOps research project extending OmniSQL-7B (VLDB&apos;25 SOTA)
               to PostgreSQL via QLoRA fine-tuning.{" "}
-              <span className="text-foreground">2.9× improvement</span> in
+              <span className="text-foreground">3.0× improvement</span> in
               execution accuracy over the base model on a 200-pair test set.
             </p>
 
             <div className="mt-12 flex flex-wrap gap-3 font-mono text-xs">
-              <Stat label="Execution accuracy" value="66.0%" />
+              <Stat label="Execution accuracy" value="69.0%" />
               <Stat label="vs baseline" value="23.0%" />
               <Stat label="Validity rate" value="94.0%" />
               <Stat label="Test set" value="200 pairs" />

@@ -12,13 +12,13 @@
 
 OmniSQL-7B is the current state-of-the-art text-to-SQL model (VLDB 2025), but the authors trained on SQLite syntax and explicitly call out the dialect gap as future work. This project closes that gap for PostgreSQL: synthesizing 2,400 execution-validated training pairs across 5 schemas, fine-tuning with QLoRA on SageMaker, and serving via an async inference endpoint behind a FastAPI service with pgvector RAG and self-correcting SQL execution.
 
-**Headline result:** 2.9× improvement in execution accuracy over the zero-shot baseline, under matched decoding settings.
+**Headline result:** 3.0× improvement in execution accuracy over the zero-shot baseline, under matched decoding settings.
 
 | Metric | Baseline (OmniSQL-7B) | Fine-tuned (OmniSQL-Pg) | Δ |
 |---|---:|---:|---:|
-| Execution accuracy | 23.0% | **66.0%** | +43.0 pts |
-| Validity rate | 35.5% | **96.0%** | +60.5 pts |
-| Avg BLEU | 0.33 | **0.61** | +0.28 |
+| Execution accuracy | 23.0% | **69.0%** | +46.0 pts |
+| Validity rate | 35.5% | **97.5%** | +62.0 pts |
+| Avg BLEU | 0.33 | **0.64** | +0.31 |
 
 Both numbers measured on a 200-pair held-out test set, beam-search decoding (`num_beams=4`), and set-semantics execution-accuracy comparison (the BIRD/Spider convention).
 
@@ -26,26 +26,26 @@ Both numbers measured on a 200-pair held-out test set, beam-search decoding (`nu
 
 ## Why this matters
 
-The base OmniSQL-7B produces SQLite idioms — `julianday()`, `strftime()`, no schema namespacing — which fail outright against PostgreSQL. Fine-tuning teaches it the right dialect: `DATE_TRUNC`, `EXTRACT(... FROM ...)`, `INTERVAL`, schema-qualified table references. The 43-point execution-accuracy lift is attributable purely to dialect adaptation; the underlying reasoning ability of the base model is preserved.
+The base OmniSQL-7B produces SQLite idioms — `julianday()`, `strftime()`, no schema namespacing — which fail outright against PostgreSQL. Fine-tuning teaches it the right dialect: `DATE_TRUNC`, `EXTRACT(... FROM ...)`, `INTERVAL`, schema-qualified table references. The 46-point execution-accuracy lift is attributable purely to dialect adaptation; the underlying reasoning ability of the base model is preserved.
 
 Per-schema breakdown (fine-tuned vs baseline execution accuracy):
 
 | Schema | Fine-tuned | Baseline |
 |---|---:|---:|
-| ecommerce | 45.0% | 30.0% |
-| fintech | 76.9% | 28.2% |
-| healthcare | 77.5% | 7.5% |
-| hr_system | 58.5% | 29.3% |
-| saas_analytics | 72.5% | 20.0% |
+| ecommerce | 52.5% | 30.0% |
+| fintech | 79.5% | 28.2% |
+| healthcare | 72.5% | 7.5% |
+| hr_system | 65.9% | 29.3% |
+| saas_analytics | 75.0% | 20.0% |
 
 Per-complexity breakdown (fine-tuned only):
 
 | Complexity | Execution accuracy |
 |---|---:|
 | Simple | 95.1% |
-| Moderate | 70.0% |
-| Complex | 53.7% |
-| Highly complex | 42.9% |
+| Moderate | 72.9% |
+| Complex | 57.4% |
+| Highly complex | 48.6% |
 
 ---
 
@@ -58,9 +58,12 @@ Each row is a single, attributable engineering change measured against the same 
 | v1 (initial) | 46.0% | 1,800 generic synthetic pairs, greedy decoding, list-equality result comparison |
 | v1 + fixed eval | 60.0% | Switched comparator to set semantics (order- and column-name independent), matching BIRD/Spider conventions. The original list-equality penalized cosmetic differences like row order and column aliases. |
 | v2 retrain | 62.0% | Added 600 targeted pairs (list-with-detail, time-series, window functions, multi-join-filter) addressing identified failure modes. Retrained LoRA on 2,400 pairs. |
-| v2 + beam=4 | **66.0%** | Beam search decoding (was greedy). Helps most on highly-complex queries (+8.6 pts) where the model needs to back out of a wrong early token. |
+| v2 + beam=4 | 66.0% | Beam search decoding (was greedy). Helps most on highly-complex queries (+8.6 pts) where the model needs to back out of a wrong early token. |
+| **v3 (3 epochs)** | **69.0%** | Retrained for 3 epochs instead of 1. Loss curve dropped from 0.17 (end of epoch 1) to 0.13 (end of epoch 3) without overfitting signal. Hardest queries benefited most. |
 
-The baseline numbers in the headline table use the same beam=4 decoding for a fair comparison — beam search lifts the zero-shot baseline from 8% to 23% on its own. Even after that adjustment, fine-tuning contributes a clean +43 points.
+The baseline numbers in the headline table use the same beam=4 decoding for a fair comparison — beam search lifts the zero-shot baseline from 8% to 23% on its own. Even after that adjustment, fine-tuning contributes a clean +46 points.
+
+A Maj@8 (majority voting at K=8) experiment was attempted on v3 but did not improve over beam=4 on this test set. Inspection revealed the failures were not low-confidence sampling artifacts but cosmetic column-projection differences (e.g. the model emits `id, sum(amount)` while the reference uses `id, closed_at, sum(amount)`) that the strict comparator counts as wrong. The implementation is committed in `scripts/evaluation/evaluate_majority.py` for future use; the negative result is honest signal that the evaluator, not the model, is now the bottleneck on this benchmark.
 
 ---
 
@@ -108,9 +111,9 @@ The full recipe is in `scripts/train.py`. Headline numbers:
 - **Precision:** bf16 (fp16 produces token-0 contamination and NaN gradients on Qwen2 — bf16 is mandatory)
 - **Optimizer:** AdamW, lr=1e-4, cosine schedule
 - **Data:** 2,400 (question, schema_ddl, sql) pairs across 5 schemas — 1,800 generic pairs from Groq llama-3.3-70b + 600 pattern-targeted pairs from DeepSeek V3. All execution-validated against real Postgres before being added to the training set.
-- **Hardware:** SageMaker `ml.g5.2xlarge`, 1 epoch, ~31 minutes
+- **Hardware:** SageMaker `ml.g5.2xlarge`, 3 epochs, ~94 minutes
 - **Adapter size:** 37 MB
-- **Loss curve:** 0.65 → 0.17
+- **Loss curve:** 0.65 → 0.17 (end of epoch 1) → 0.13 (end of epoch 3)
 
 The pre-eval validation step is the unsung hero of the data pipeline — every generated SQL pair is executed against a containerized Postgres with the relevant schema and discarded if it doesn't run. Without it, the training set is full of plausible-looking but broken SQL.
 
@@ -158,11 +161,11 @@ terraform apply -target=module.s3 -target=module.sagemaker
 aws s3 cp data/synthetic/pg_finetune_v2_combined.jsonl \
   s3://<datasets-bucket>/pg_finetune_v2_combined.jsonl
 
-# Launch SageMaker training job (~31 min on ml.g5.2xlarge)
+# Launch SageMaker training job (~94 min for 3 epochs on ml.g5.2xlarge)
 python scripts/launch_training.py
 
 # Package and deploy to async endpoint (auto-detects latest training job)
-python scripts/deploy_sagemaker.py --version omnisql-pg-v2
+python scripts/deploy_sagemaker.py --version omnisql-pg-v3
 ```
 
 ### 3. Build and deploy the FastAPI service
@@ -178,7 +181,7 @@ docker buildx build --platform linux/amd64 -t omnisql-api .
 ```bash
 python scripts/evaluation/evaluate.py \
   --mode sagemaker \
-  --run-name omnisql-pg-v2-beam4 \
+  --run-name omnisql-pg-v3-beam4 \
   --test-path data/synthetic/pg_test.jsonl
 ```
 
@@ -232,6 +235,7 @@ A few things worth pulling out for anyone building similar systems:
 - **`/opt/ml/model/` is read-only at inference time.** Copy adapter config to `/tmp/peft_model/` first or PEFT will throw.
 - **Set-semantics result comparison.** Comparing result rows as ordered lists with named columns (the obvious first cut) penalizes the model for cosmetic differences — different row order, different column aliases. BIRD/Spider compare result sets as multisets of value-tuples. Switching to that convention in `scripts/evaluation/metrics.py` lifted measured EX by 14 points on the same model.
 - **Beam search > greedy for structured outputs.** Greedy commits to whatever the top-1 token is at each step; if that token is wrong (e.g. a SQLite idiom for the baseline, or a hallucinated column name), the whole completion is unrecoverable. Beam=4 with `early_stopping=True` was a +4 EX win on the fine-tuned model and a +15 EX win on the baseline.
+- **Majority voting plateaus when reference SQLs have a single "shape."** Maj@8 sampling produced functionally-correct SQL variants that lost the vote to popular-but-cosmetically-different completions. The bottleneck at this point is the evaluator's column-projection rigidity, not the model's accuracy.
 
 ---
 

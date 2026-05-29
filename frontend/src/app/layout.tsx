@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "OmniSQL Postgres — Natural language to PostgreSQL, fine-tuned",
   description:
-    "Production-grade text-to-SQL for PostgreSQL. OmniSQL-7B fine-tuned with QLoRA on 2,400 PostgreSQL query pairs. 66% execution accuracy vs 23% baseline (matched decoding).",
+    "Production-grade text-to-SQL for PostgreSQL. OmniSQL-7B fine-tuned with QLoRA on 2,400 PostgreSQL query pairs. 69% execution accuracy vs 23% baseline (matched decoding).",
   metadataBase: new URL("https://omnisql-pg.vercel.app"),
 };
 
